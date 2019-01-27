@@ -1,0 +1,678 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "name": "reviews_sentiment_analysis.ipynb",
+      "version": "0.3.2",
+      "provenance": [],
+      "collapsed_sections": [],
+      "include_colab_link": true
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "accelerator": "GPU"
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/murtaza98/nlp-datasets/blob/master/embedding_0.pkl\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "metadata": {
+        "id": "i1Gt_7lAGhCF",
+        "colab_type": "code",
+        "outputId": "5cd33fa5-9e5b-4b7e-a32a-fe5ea54ef527",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 122
+        }
+      },
+      "cell_type": "code",
+      "source": [
+        "from google.colab import drive\n",
+        "drive.mount('/content/drive')"
+      ],
+      "execution_count": 1,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "Go to this URL in a browser: https://accounts.google.com/o/oauth2/auth?client_id=947318989803-6bn6qk8qdgf4n4g3pfee6491hc0brc4i.apps.googleusercontent.com&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&scope=email%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdocs.test%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.photos.readonly%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fpeopleapi.readonly&response_type=code\n",
+            "\n",
+            "Enter your authorization code:\n",
+            "··········\n",
+            "Mounted at /content/drive\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "id": "owOQyiIiI-4M",
+        "colab_type": "code",
+        "outputId": "9467d3d6-4114-4457-ed83-2da0840ab081",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 85
+        }
+      },
+      "cell_type": "code",
+      "source": [
+        "# make directory to store data\n",
+        "!mkdir data\n",
+        "# get the data\n",
+        "!cp '/content/drive/My Drive/Machine Learning Projects/Amazon Sentiment Analysis/data/test.ft.txt.bz2.zip' /content/data\n",
+        "!cp '/content/drive/My Drive/Machine Learning Projects/Amazon Sentiment Analysis/data/train.ft.txt.bz2.zip' /content/data\n",
+        "# extract data\n",
+        "!unzip /content/data/train.ft.txt.bz2.zip\n",
+        "!unzip /content/data/test.ft.txt.bz2.zip\n",
+        "# move extracted file\n",
+        "!mv /content/train.ft.txt.bz2 /content/data/train.ft.txt.bz2\n",
+        "!mv /content/test.ft.txt.bz2 /content/data/test.ft.txt.bz2"
+      ],
+      "execution_count": 4,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "Archive:  /content/data/train.ft.txt.bz2.zip\n",
+            "  inflating: train.ft.txt.bz2        \n",
+            "Archive:  /content/data/test.ft.txt.bz2.zip\n",
+            "  inflating: test.ft.txt.bz2         \n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "id": "koUSGk2NJAPT",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "text = \"__label__2 asdo asdio asdioa sdioas dua\""
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "xvW_O5AXOBGb",
+        "colab_type": "code",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 34
+        },
+        "outputId": "d9703103-d76d-4de3-9aa2-9ac0c8e4e763"
+      },
+      "cell_type": "code",
+      "source": [
+        "# get all imports\n",
+        "import re\n",
+        "from tqdm import tqdm     # to show progress of a loop\n",
+        "import bz2                # to extract data from file\n",
+        "from sklearn.utils import shuffle\n",
+        "import numpy as np\n",
+        "import gensim\n",
+        "import sys\n",
+        "import pickle\n",
+        "from keras.layers import *\n",
+        "from keras.models import Model\n",
+        "from keras.preprocessing.text import Tokenizer\n",
+        "from keras.preprocessing.sequence import pad_sequences"
+      ],
+      "execution_count": 1,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "Using TensorFlow backend.\n"
+          ],
+          "name": "stderr"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "id": "zDal1FdWJAJW",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "def getReviewX(review):\n",
+        "  # seperate label\n",
+        "  review = review.split(' ', 1)[1]\n",
+        "  # replace all numbers\n",
+        "  review = re.sub('[0-9]+', '0', review)\n",
+        "  # replace all urls\n",
+        "  if 'http' in review or 'www.' in review:\n",
+        "    regex_url = '((http(s)+(\\:\\/\\/))?(www\\.)?([\\w\\-\\.\\/])*(\\.[a-zA-Z]{2,3}\\/?))[^\\s\\b\\n|]*[^.,;:\\?\\!\\@\\^\\$ -]'\n",
+        "    review = re.sub(regex_url, '<url>', review)\n",
+        "  return review\n",
+        "\n",
+        "def getReviewY(review):\n",
+        "  #seperate the labels\n",
+        "  review = review.split(' ', 1)[0]\n",
+        "  return [1, 0] if review.split(' ', 1)[0] == '__label__1' else [0, 1]  "
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "dRuvtjdmNN6M",
+        "colab_type": "code",
+        "outputId": "1224606d-bcf9-425d-da03-f6c94f785b37",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 51
+        }
+      },
+      "cell_type": "code",
+      "source": [
+        "# test getReviewX\n",
+        "dummy = 'this is this www.google.com https://www.google.com 456789' \n",
+        "print(getReviewX(dummy))\n",
+        "#test getReviewY\n",
+        "dummy = '__label__1 asasddasd asd'\n",
+        "print(getReviewY(dummy))"
+      ],
+      "execution_count": 4,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "is this <url> <url> 0\n",
+            "[1, 0]\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "id": "h9Oh85CuJAFj",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "def splitLabelsReviews(lines):\n",
+        "  reviews=[]\n",
+        "  labels=[]\n",
+        "  for line in tqdm(lines):\n",
+        "    review = getReviewX(line)\n",
+        "    label = getReviewY(line)\n",
+        "    reviews.append(review[:1024])   # restrict the size of sent to 512 chars\n",
+        "    labels.append(label)\n",
+        "  return reviews, labels"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "j4GFFDRfJACl",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "train_file = bz2.BZ2File('/content/data/train.ft.txt.bz2')\n",
+        "test_file = bz2.BZ2File('/content/data/test.ft.txt.bz2')"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "colab_type": "code",
+        "id": "kDRQSflBbwRV",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "# train_lines = train_file.readlines()\n",
+        "# test_lines = test_file.readlines()"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "colab_type": "code",
+        "id": "8kCkzGKSbvsq",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "# print(type(train_lines))\n",
+        "# print(type(train_lines[0]))"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "rsFm1OnNUlFv",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "# convert list of bytes to list of string \n",
+        "# train_lines = [x.decode('utf-8') for x in train_file.readlines()]\n",
+        "# test_lines = [x.decode('utf-8') for x in test_file.readlines()]"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "DvBB1bIjis5_",
+        "colab_type": "code",
+        "outputId": "1dd4f234-2785-48fa-975b-926ac7071b52",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 51
+        }
+      },
+      "cell_type": "code",
+      "source": [
+        "# seperate data and labels\n",
+        "reviews_train, y_train = splitLabelsReviews([x.decode('utf-8') for x in train_file.readlines()])\n",
+        "reviews_test, y_test = splitLabelsReviews([x.decode('utf-8') for x in test_file.readlines()])"
+      ],
+      "execution_count": 9,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "100%|██████████| 3600000/3600000 [01:06<00:00, 54086.28it/s]\n",
+            "100%|██████████| 400000/400000 [00:06<00:00, 59344.41it/s]\n"
+          ],
+          "name": "stderr"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "id": "qSqIqKBYis1w",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "# shuffle data\n",
+        "reviews_train, y_train = shuffle(reviews_train, y_train)\n",
+        "reviews_test, y_test = shuffle(reviews_test, y_test)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "qceCj7ciisyJ",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "y_train = np.array(y_train)\n",
+        "y_test = np.array(y_test)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "xF7CFUbOisu0",
+        "colab_type": "code",
+        "outputId": "2118e00f-ba5a-48e7-a65e-651f3b129795",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 51
+        }
+      },
+      "cell_type": "code",
+      "source": [
+        "# data stats\n",
+        "print('Number of train reviews ' + str(len(reviews_train)))\n",
+        "print('Number of test reviews ' + str(len(reviews_test)))"
+      ],
+      "execution_count": 12,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "Number of train reviews 3600000\n",
+            "Number of test reviews 400000\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "id": "34bQZ91rWcMA",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "def pretrained_embedding_layer(embed_model, word_to_index):\n",
+        "    \"\"\"\n",
+        "    Creates a Keras Embedding() layer and loads in pre-trained GloVe 50-dimensional vectors.\n",
+        "    embed_model -- gensim word2vec model instance\n",
+        "    Arguments:\n",
+        "    Returns:\n",
+        "    embedding_layer -- pretrained layer Keras instance\n",
+        "    \"\"\"\n",
+        "    \n",
+        "    vocab_len = len(embed_model) + 1       # adding 1 to fit Keras embedding (requirement)\n",
+        "    emb_dim = embed_model['sample'].shape[0]     # define dimensionality of your word2vec word vectors (= 50)\n",
+        "    \n",
+        "    # Initialize the embedding matrix as a numpy array of zeros of shape (vocab_len, dimensions of word vectors = emb_dim)\n",
+        "    emb_matrix = np.zeros(shape=(vocab_len, emb_dim))\n",
+        "    \n",
+        "    # Set each row \"index\" of the embedding matrix to be the word vector representation of the \"index\"th word of the vocabulary\n",
+        "    for word, index in word_to_index.items():\n",
+        "        emb_matrix[index, :] = embed_model[word]\n",
+        "\n",
+        "    # Define Keras embedding layer with the correct output/input sizes, make it trainable. Use Embedding(...). Make sure to set trainable=False. \n",
+        "    embedding_layer = Embedding(vocab_len, emb_dim, trainable=False)\n",
+        "    \n",
+        "    # Build the embedding layer, it is required before setting the weights of the embedding layer. Do not modify the \"None\".\n",
+        "    embedding_layer.build((None,))\n",
+        "    \n",
+        "    # Set the weights of the embedding layer to the embedding matrix. Your layer is now pretrained.\n",
+        "    embedding_layer.set_weights([emb_matrix])\n",
+        "    \n",
+        "    return embedding_layer"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "0JYxCFa2WcH9",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "# Build the model\n",
+        "\n",
+        "input_sent = Input(shape=(None,))\n",
+        "\n",
+        "# Create the embedding layer pretrained with word2vec Vectors (≈1 line)\n",
+        "embedding_layer = pretrained_embedding_layer(embed_words, word_to_index)\n",
+        "    \n",
+        "# Propagate sentence_indices through your embedding layer, you get back the embeddings\n",
+        "embeddings = embedding_layer(input_sent)\n",
+        "\n",
+        "\n",
+        "X = LSTM(128, return_sequences=True)(embeddings)\n",
+        "X = Dropout(0.4)(X)\n",
+        "X = LSTM(128)(X)\n",
+        "X = Dropout(0.3)(X)\n",
+        "X = Dense(2)(X)\n",
+        "X = Activation('softmax')(X)\n",
+        "\n",
+        "model = Model(inputs = input_sent, outputs = output)\n",
+        "model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['acc'])\n",
+        "model.summary()"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "wN57QsLIWcFI",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "!cp /content/embedding_0.pkl \"/content/drive/My Drive/Machine Learning Projects/Amazon Sentiment Analysis\""
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "z-Nc-a4CWb8o",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "vocab = list(embed_words.keys())\n",
+        "# generate word to index dict\n",
+        "word_to_index = dict()\n",
+        "for i in range(len(vocab)):\n",
+        "  word_to_index[vocab[i]] = i"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "Ld4ovlC_Wb6k",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        ""
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "1_7T9wK_Wb4X",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        ""
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "G7yC-RqyWb0e",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        ""
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "ro0QByo6pwWE",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "# LOADING A PRETRAINED WORD2VEC GOOGLE MODEL\n",
+        "!cp '/content/drive/My Drive/Machine Learning Projects/Word Embedding Models/word2vec_model/GoogleNews-vectors-negative300.bin.gz' /content\n",
+        "!gunzip /content/Google*.gz\n",
+        "embed_model = gensim.models.KeyedVectors.load_word2vec_format('GoogleNews-vectors-negative300.bin', binary=True)\n",
+        "embed_model.save_word2vec_format('GoogleNews-vectors-negative300.txt', binary=False)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "l943JdP8vaie",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "vocab_words_dict = embed_model.vocab\n",
+        "\n",
+        "# extract vocab words from dict\n",
+        "vocab = []\n",
+        "for key, value in vocab_words_dict.items():\n",
+        "    vocab.append(key)\n",
+        "\n",
+        "\n",
+        "  \n",
+        "# print('Total words in word2vec vocab ' + str(len(embed_words)))"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "_bjhsIirLL2Z",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "# partitioning the files\n",
+        "import pickle\n",
+        "def save_obj(obj, name ):\n",
+        "    with open(name + '.pkl', 'wb+') as f:\n",
+        "        pickle.dump(obj, f, pickle.HIGHEST_PROTOCOL)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "nvM0P-TlNB31",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "# partitioning files\n",
+        "for i in range(0, 3000000, 300000):\n",
+        "  # make a dict with key as word and value as embedding\n",
+        "  embed_words = dict()\n",
+        "  for word in vocab[i : i+300000]:\n",
+        "    embed_vec = embed_model[word]\n",
+        "    embed_words[word] = embed_vec\n",
+        "    \n",
+        "  save_obj(embed_words, 'embedding_'+str(i//300000))"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "nre5j9duPD26",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "# Loading into dictionary\n",
+        "def load_obj(name ):\n",
+        "    with open(name + '.pkl', 'rb') as f:\n",
+        "        return pickle.load(f)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "vpJxajW9PDxW",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        "# Loading into memory\n",
+        "embed_words = dict()\n",
+        "for i in range(10):\n",
+        "  temp_dict = load_obj('embedding_' + str(i))\n",
+        "  embed_words.update(temp_dict)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "ZWSHjsdy87DM",
+        "colab_type": "code",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 34
+        },
+        "outputId": "d7ae8d77-56ce-46e1-d51e-2b2974e88a66"
+      },
+      "cell_type": "code",
+      "source": [
+        "embed_words['hi'].shape"
+      ],
+      "execution_count": 8,
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": [
+              "(300,)"
+            ]
+          },
+          "metadata": {
+            "tags": []
+          },
+          "execution_count": 8
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "id": "QL4jUctelu3_",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        ""
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "nPZNvpBNqcTb",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "cell_type": "code",
+      "source": [
+        ""
+      ],
+      "execution_count": 0,
+      "outputs": []
+    }
+  ]
+}
